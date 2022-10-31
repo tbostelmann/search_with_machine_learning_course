@@ -2,7 +2,7 @@
 import xgboost as xgb
 from xgboost import plot_importance, plot_tree
 from matplotlib import pyplot as plt
-import json
+import json, tempfile
 
 # Plots useful things like the tree and importance for display
 def plots(xgb_model, xgb_model_name, xgb_feat_map, xgb_plot):
@@ -27,11 +27,10 @@ def plots(xgb_model, xgb_model_name, xgb_feat_map, xgb_plot):
 # xgb_train_data is a string path to our training file
 def train(xgb_train_data, num_rounds=5, xgb_conf=None ):
     xgb_params = {'objective': 'reg:logistic'}
-    bst = None
     if xgb_conf is not None:
         with open(xgb_conf) as json_file:
             xgb_params = json.load(json_file)
     print("Training XG Boost on %s for %s rounds with params: %s" % (xgb_train_data, num_rounds, xgb_params))
-    ##### Step 3.a
-    print("IMPLEMENT ME: train()")
+    dtrain = xgb.DMatrix(xgb_train_data)
+    bst = xgb.train(xgb_params, dtrain, num_rounds)
     return bst, xgb_params

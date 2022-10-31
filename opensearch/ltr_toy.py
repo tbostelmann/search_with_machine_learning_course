@@ -436,6 +436,6 @@ print("Response:\n%s" % json.dumps(response, indent=True))
 
 # Optional visualization of our tree
 model_plot = plot_tree(bst, feat_map_file.name)
-model_plot.figure.savefig("ltr_toy_model.png")
+model_plot.figure.savefig("tmp/ltr_toy_model.png")
 # If you are running in an environment other than Gitpod that can display things, you can also uncomment the next line:
 # plt.show()

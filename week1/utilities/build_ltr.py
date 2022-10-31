@@ -299,9 +299,12 @@ if __name__ == "__main__":
             # We need our featureset
             with open(args.featureset) as json_file:
                 the_feature_set = json.load(json_file)
+                feature_names = []
+                for feature in the_feature_set['featureset']['features']:
+                    feature_names.append(feature['name'])
                 # Log our features for the training set
                 print("Logging features")
-                features_df = data_prepper.log_features(impressions_df, terms_field=args.ltr_terms_field)
+                features_df = data_prepper.log_features(impressions_df, terms_field=args.ltr_terms_field, feature_names=feature_names)
                 # Calculate some stats so we can normalize values.
                 # Since LTR only supports min/max, mean/std. dev and sigmoid, we can only do that
                 if args.normalize_json:
