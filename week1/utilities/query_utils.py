@@ -136,9 +136,9 @@ def create_simple_baseline(user_query, click_prior_query, filters, sort="_score"
         add_aggs(query_obj)
     return query_obj
 
+
 # Hardcoded query here.  Better to use search templates or other query config.
 def create_query(user_query, click_prior_query, filters, sort="_score", sortDir="desc", size=10, include_aggs=True, highlight=True, source=None):
-
     query_obj = {
         'size': size,
         "sort":[

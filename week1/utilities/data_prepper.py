@@ -241,18 +241,26 @@ class DataPrepper:
         feature_results["doc_id"] = []
         feature_results["query_id"] = []
         feature_results["sku"] = []
-        feature_results["name_match"] = []
+        for feature_name in feature_names:
+            feature_results[feature_name] = []
+
         for hit in response['hits']['hits']:
             feature_results["doc_id"].append(hit['_id'])
             feature_results["query_id"].append(query_id)
             feature_results["sku"].append(hit['_source']['sku'][0])
+            log_entries = {}
+            for feature_name in feature_names:
+                log_entries[feature_name] = 0
+
             if hit['fields']['_ltrlog'] and hit['fields']['_ltrlog'][0]['log_entry']:
                 for log_entry in hit['fields']['_ltrlog'][0]['log_entry']:
-                    feature_results[log_entry['name']].append(log_entry.get('value', 0.0))
+                    log_entries[log_entry['name']] = log_entry.get('value', 0.0)
             else:
-                for feature_name in feature_names:
-                    feature_results[feature_name].append(0.0)
                 no_results.append(key)
+
+            for feature_name in feature_names:
+                feature_results[feature_name].append(log_entries[feature_name])
+
         frame = pd.DataFrame(feature_results)
         data_frame_astype = {'doc_id': 'int64', 'query_id': 'int64', 'sku': 'int64'}
         for feature_name in feature_names:
