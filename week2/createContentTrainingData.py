@@ -6,28 +6,32 @@ import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+
 def transform_name(product_name):
     # IMPLEMENT
     return product_name
+
 
 # Directory for product data
 directory = r'/workspace/datasets/product_data/products/'
 
 parser = argparse.ArgumentParser(description='Process some integers.')
 general = parser.add_argument_group("general")
-general.add_argument("--input", default=directory,  help="The directory containing product data")
+general.add_argument("--input", default=directory, help="The directory containing product data")
 general.add_argument("--output", default="/workspace/datasets/fasttext/output.fasttext", help="the file to output to")
-general.add_argument("--label", default="id", help="id is default and needed for downsteam use, but name is helpful for debugging")
+general.add_argument("--label", default="id",
+                     help="id is default and needed for downsteam use, but name is helpful for debugging")
 
 # IMPLEMENT: Setting min_products removes infrequent categories and makes the classifier's task easier.
-general.add_argument("--min_products", default=0, type=int, help="The minimum number of products per category (default is 0).")
+general.add_argument("--min_products", default=0, type=int,
+                     help="The minimum number of products per category (default is 0).")
 
 args = parser.parse_args()
 output_file = args.output
 path = Path(output_file)
 output_dir = path.parent
 if os.path.isdir(output_dir) == False:
-        os.mkdir(output_dir)
+    os.mkdir(output_dir)
 
 if args.input:
     directory = args.input
@@ -36,6 +40,7 @@ min_products = args.min_products
 names_as_labels = False
 if args.label == 'name':
     names_as_labels = True
+
 
 def _label_filename(filename):
     tree = ET.parse(filename)
@@ -58,12 +63,23 @@ def _label_filename(filename):
               labels.append((cat, transform_name(name)))
     return labels
 
+
 if __name__ == '__main__':
     files = glob.glob(f'{directory}/*.xml')
-    print("Writing results to %s" % output_file)
+    label_map = {}
     with multiprocessing.Pool() as p:
+        print("Processing files in %s" % f'{directory}/*.xml')
         all_labels = tqdm(p.imap(_label_filename, files), total=len(files))
+        for label_list in all_labels:
+            for (cat, name) in label_list:
+                if cat not in label_map:
+                    label_map[cat] = []
+                label_map[cat].append(name)
+        print("Writing results to %s" % output_file)
         with open(output_file, 'w') as output:
-            for label_list in all_labels:
-                for (cat, name) in label_list:
-                    output.write(f'__label__{cat} {name}\n')
+            for cat in label_map:
+                if len(label_map[cat]) > min_products:
+                    for name in label_map[cat]:
+                        output.write(f'__label__{cat} {name}\n')
+                # else:
+                #     print(f'{cat} has too few products: {len(label_map[cat])} < {min_products}')
