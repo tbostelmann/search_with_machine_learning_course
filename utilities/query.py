@@ -9,13 +9,16 @@ import os
 from getpass import getpass
 from urllib.parse import urljoin
 import pandas as pd
+import re
 import sys
 import logging
+import fasttext
+import nltk
+stemmer = nltk.stem.PorterStemmer()
 
-
+logging.basicConfig(filename="query.log", format='%(levelname)s:%(message)s')
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-logging.basicConfig(format='%(levelname)s:%(message)s')
 
 # expects clicks and impressions to be in the row
 def create_prior_queries_from_group(
@@ -44,12 +47,12 @@ def create_prior_queries(doc_ids, doc_id_weights,
                 wgt = doc_id_weights[doc]  # This should be the number of clicks or whatever
                 click_prior_query += "%s^%.3f  " % (doc, wgt / query_times_seen)
             except KeyError as ke:
-                pass  # nothing to do in this case, it just means we can't find priors for this doc
+                pass  # nothing to do in this case, it just means wloade can't find priors for this doc
     return click_prior_query
 
 
 # Hardcoded query here.  Better to use search templates or other query config.
-def create_query(user_query, click_prior_query, filters, sort="_score", sortDir="desc", size=10, source=None, useSynonyms=False):
+def create_query(user_query, category_predictions, click_prior_query, filters, sort="_score", sortDir="desc", size=10, source=None, useSynonyms=False):
     if useSynonyms:
         match_name = 'name.synonyms'
     else:
@@ -65,7 +68,6 @@ def create_query(user_query, click_prior_query, filters, sort="_score", sortDir=
                 "query": {
                     "bool": {
                         "must": [
-
                         ],
                         "should": [  #
                             {
@@ -172,6 +174,16 @@ def create_query(user_query, click_prior_query, filters, sort="_score", sortDir=
             }
         }
     }
+
+    if category_predictions:
+        query_obj["query"]["function_score"]["query"]["bool"]["must"] = [
+            {
+                "terms": {
+                    "categoryPathIds": category_predictions
+                }
+            }
+        ]
+
     if click_prior_query is not None and click_prior_query != "":
         query_obj["query"]["function_score"]["query"]["bool"]["should"].append({
             "query_string": {
@@ -191,16 +203,31 @@ def create_query(user_query, click_prior_query, filters, sort="_score", sortDir=
     return query_obj
 
 
-def search(client, user_query, index="bbuy_products", sort="_score", sortDir="desc", useSynonyms=False):
+def search(client, user_query, classifier_model, index="bbuy_products", sort="_score", sortDir="desc", useSynonyms=False):
     #### W3: classify the query
     #### W3: create filters and boosts
     # Note: you may also want to modify the `create_query` method above
-    query_obj = create_query(user_query, click_prior_query=None, filters=None, sort=sort, sortDir=sortDir, source=["name", "shortDescription"], useSynonyms=useSynonyms)
-    logging.info(query_obj)
+    category_query = re.sub('[^a-zA-Z0-9]+', ' ', query)
+    category_query = re.sub(' +', ' ', category_query)
+    category_query = stemmer.stem(category_query)
+    category_predictions = classifier_model.predict(category_query, k=3, threshold=0.1)
+    logger.info(f'category_predictions: {category_predictions}')
+    total_prediction = 0
+    categories = []
+    for (i, p) in enumerate(category_predictions[0]):
+        if total_prediction < 0.6:
+            total_prediction += category_predictions[1][i]
+            categories.append(str(category_predictions[0][i]).replace('__label__', ''))
+    logger.info(f'categories: {categories}')
+
+    query_obj = create_query(user_query, categories, click_prior_query=None, filters=None, sort=sort, sortDir=sortDir, source=["name", "shortDescription"], useSynonyms=useSynonyms)
+    logger.info(json.dumps(query_obj))
     response = client.search(query_obj, index=index)
     if response and response['hits']['hits'] and len(response['hits']['hits']) > 0:
         hits = response['hits']['hits']
-        print(json.dumps(response, indent=2))
+        for (i, hit) in enumerate(hits, start=1):
+            print(f'\'pos\': {i}, \'score\': {hit["_score"]}] \'name\': {hit["_source"]["name"]}')
+        #print(json.dumps(response, indent=2))
 
 
 if __name__ == "__main__":
@@ -219,6 +246,7 @@ if __name__ == "__main__":
                          help='The OpenSearch admin.  If this is set, the program will prompt for password too. If not set, use default of admin/admin')
     general.add_argument('--synonyms', action='store_true')
     general.add_argument('--no-synonyms', dest='synonyms', action='store_false')
+    general.add_argument('--model-file', dest='model_file', default="/workspace/datasets/fasttext/model_project3.bin")
     general.set_defaults(synonyms=False)
 
     args = parser.parse_args()
@@ -248,13 +276,17 @@ if __name__ == "__main__":
 
     )
     index_name = args.index
+
+    model_file = args.model_file
+    model = fasttext.load_model(model_file)
+
     query_prompt = "\nEnter your query (type 'Exit' to exit or hit ctrl-c):"
     print(query_prompt)
     for line in sys.stdin:
         query = line.rstrip()
         if query == "Exit":
             break
-        search(client=opensearch, user_query=query, index=index_name, useSynonyms=use_synonyms)
+        search(client=opensearch, user_query=query, classifier_model=model, index=index_name, useSynonyms=use_synonyms)
 
         print(query_prompt)
 
