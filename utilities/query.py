@@ -52,7 +52,7 @@ def create_prior_queries(doc_ids, doc_id_weights,
 
 
 # Hardcoded query here.  Better to use search templates or other query config.
-def create_query(user_query, category_predictions, click_prior_query, filters, sort="_score", sortDir="desc", size=10, source=None, useSynonyms=False):
+def create_query(user_query, category_predictions, click_prior_query, filters, sort="_score", sortDir="desc", size=10, source=None, useSynonyms=False, use_filter=True):
     if useSynonyms:
         match_name = 'name.synonyms'
     else:
@@ -175,7 +175,9 @@ def create_query(user_query, category_predictions, click_prior_query, filters, s
         }
     }
 
-    if category_predictions:
+    logger.info(f"category_predictions: {category_predictions} - use_filter: {use_filter}")
+    logger.info(f"bool: {bool(category_predictions and use_filter)}")
+    if category_predictions and use_filter:
         query_obj["query"]["function_score"]["query"]["bool"]["must"] = [
             {
                 "terms": {
@@ -203,7 +205,7 @@ def create_query(user_query, category_predictions, click_prior_query, filters, s
     return query_obj
 
 
-def search(client, user_query, classifier_model, index="bbuy_products", sort="_score", sortDir="desc", useSynonyms=False):
+def search(client, user_query, classifier_model, index="bbuy_products", sort="_score", sortDir="desc", useSynonyms=False, use_filter=True):
     #### W3: classify the query
     #### W3: create filters and boosts
     # Note: you may also want to modify the `create_query` method above
@@ -220,13 +222,13 @@ def search(client, user_query, classifier_model, index="bbuy_products", sort="_s
             categories.append(str(category_predictions[0][i]).replace('__label__', ''))
     logger.info(f'categories: {categories}')
 
-    query_obj = create_query(user_query, categories, click_prior_query=None, filters=None, sort=sort, sortDir=sortDir, source=["name", "shortDescription"], useSynonyms=useSynonyms)
+    query_obj = create_query(user_query, categories, click_prior_query=None, filters=None, sort=sort, sortDir=sortDir, source=["name", "shortDescription", "categoryPathIds"], useSynonyms=useSynonyms, use_filter=use_filter)
     logger.info(json.dumps(query_obj))
     response = client.search(query_obj, index=index)
     if response and response['hits']['hits'] and len(response['hits']['hits']) > 0:
         hits = response['hits']['hits']
         for (i, hit) in enumerate(hits, start=1):
-            print(f'\'pos\': {i}, \'score\': {hit["_score"]}] \'name\': {hit["_source"]["name"]}')
+            print(f'\'pos\': {i}, \'score\': {hit["_score"]}], \'name\': {hit["_source"]["name"]} \'categoryPathIds\': {hit["_source"]["categoryPathIds"]}')
         #print(json.dumps(response, indent=2))
 
 
@@ -282,11 +284,19 @@ if __name__ == "__main__":
 
     query_prompt = "\nEnter your query (type 'Exit' to exit or hit ctrl-c):"
     print(query_prompt)
+    toggle_filter_re = r'use_filter=false'
+    toggle_filter = 'use_filter=false'
     for line in sys.stdin:
+        use_filter = True
+        if line.find(toggle_filter) != -1:
+            line = re.sub(toggle_filter_re, '', line)
+            line.replace(toggle_filter, '')
+            use_filter = False
         query = line.rstrip()
+        logger.info(f'query: {query}')
         if query == "Exit":
             break
-        search(client=opensearch, user_query=query, classifier_model=model, index=index_name, useSynonyms=use_synonyms)
+        search(client=opensearch, user_query=query, classifier_model=model, index=index_name, useSynonyms=use_synonyms, use_filter=use_filter)
 
         print(query_prompt)
 
